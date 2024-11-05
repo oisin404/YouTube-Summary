@@ -1,20 +1,10 @@
-import re
-from pytube import YouTube
 import openai
-import json
-
+from pytube import YouTube
 
 def loadConfig():
-    try:
-        with open('config.json') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print("Config file not found.")
-        return {}
-    except json.JSONDecodeError:
-        print("Error decoding JSON from config file.")
-        return {}
-
+    import json
+    with open('config.json', 'r') as f:
+        return json.load(f)
 
 def fetchCaptions(url):
     try:
@@ -30,13 +20,16 @@ def fetchCaptions(url):
 
         # Attempt to fetch English or auto-generated captions
         if 'en' in yt.captions:
+            print("Fetching standard English captions...")
             captionText = yt.captions['en'].generate_srt_captions()
         elif 'a.en' in yt.captions:
+            print("Fetching auto-generated English captions...")
             captionText = yt.captions['a.en'].generate_srt_captions()
         else:
             print("No standard or auto-generated English captions available.")
 
         if captionText:
+            print("Captions fetched successfully.")
             return captionText
 
         print("No English captions available.")
@@ -45,39 +38,31 @@ def fetchCaptions(url):
         print(f"Error fetching captions: {e}")
         return None
 
-
-def cleanCaptions(captionText):
-    print("Cleaning captions...")
-    cleanedText = re.sub(r"\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}", "", captionText)
-    cleanedText = re.sub(r"\n\d+\n", "\n", cleanedText)
-    cleanedText = re.sub(r"\n+", " ", cleanedText).strip()
+def cleanCaptions(captions):
+    # Remove SRT formatting and return plain text
+    import re
+    cleanedText = re.sub(r'\d+\n\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n', '', captions)
+    cleanedText = re.sub(r'\n+', ' ', cleanedText).strip()
     return cleanedText
 
+def summarizeWithOpenAI(text):
+    config = loadConfig()
+    openai.api_key = config["apikey"]
 
-def summarizeWithOpenAI(cleanedText):
-    api_key = loadConfig().get("apikey")
-
-    if not api_key:
-        print("API key not found.")
-        return None
-
-    openai.api_key = api_key
-
-    print("Summarizing text with OpenAI...")
     try:
-        completion = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": f"Please summarize the following text: {cleanedText}"}
-            ],
+        response = openai.Completion.create(
+            engine="davinci",
+            prompt=f"Summarize the following text:\n\n{text}",
+            max_tokens=150,
+            n=1,
+            stop=None,
+            temperature=0.5,
         )
-        return completion.choices[0].message.content
-
+        summary = response.choices[0].text.strip()
+        return summary
     except Exception as e:
-        print("Error communicating with OpenAI:", e)
+        print(f"Error summarizing text: {e}")
         return None
-
 
 def main():
     config = loadConfig()
@@ -99,7 +84,6 @@ def main():
             print("No summary was generated.")
     else:
         print("No captions were fetched.")
-
 
 if __name__ == "__main__":
     main()
